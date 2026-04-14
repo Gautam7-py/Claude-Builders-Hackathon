@@ -1,5 +1,5 @@
 # Claude-Builders-Hackathon
-# Claude Autonomous App Builder
+## Claude Autonomous App Builder
 ### Claude Builders Club × APOGEE 2026 Hackathon
 
 > **One prompt. One pipeline. A complete full-stack application.**
