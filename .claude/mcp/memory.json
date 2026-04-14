@@ -1,0 +1,10 @@
+{
+  "name": "memory",
+  "description": "Persistent cross-agent memory store. Agents use this to write and retrieve decisions, architectural choices, and error history across the pipeline run. Prevents context drift between agents.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-memory"],
+  "env": {},
+  "required": false,
+  "fallback": "Agents use .claude/context/ JSON files as memory fallback."
+}

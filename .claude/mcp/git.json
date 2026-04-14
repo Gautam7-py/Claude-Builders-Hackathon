@@ -1,0 +1,10 @@
+{
+  "name": "git",
+  "description": "Local git operations — init, add, commit, branch, diff, log. Used by DevOps agent for all local version control steps before pushing. Works entirely offline with no credentials.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-git", "--repository", "./output"],
+  "env": {},
+  "required": false,
+  "fallback": "DevOps agent writes git commands to /output/setup.sh for manual execution."
+}

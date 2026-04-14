@@ -1,0 +1,10 @@
+{
+  "name": "fetch",
+  "description": "Fetch content from URLs. Used by agents to read package documentation, npm registry data, and public API specs when making stack decisions. No authentication required for public URLs.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-fetch"],
+  "env": {},
+  "required": false,
+  "fallback": "Agents use known package versions from skill reference files if fetch is unavailable."
+}

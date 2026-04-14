@@ -1,0 +1,272 @@
+---
+name: main-pipeline
+version: 1.0
+description: >
+  Master workflow DAG for the autonomous app generation pipeline.
+  Defines the exact execution sequence, gate conditions, parallel
+  execution rules, and failure routing between all agents.
+---
+
+# Main Pipeline Workflow
+
+## Execution Order
+
+```
+[User Prompt]
+      │
+      ▼
+[Orchestrator]  ──── reads prompt ──── writes manifest.json
+      │
+      ▼
+[Executor]      ──── reads manifest ── writes execution_plan.json
+      │
+      ▼
+[Architect]     ──── reads plan ─────  writes architecture.json
+      │
+      ├─────────────────────┐
+      ▼                     ▼
+[Backend]              [Frontend]     ← parallel if supported
+      │                     │
+      ▼                     ▼
+[backend_done.json]  [frontend_done.json]
+      │                     │
+      └──────────┬──────────┘
+                 ▼
+            [Tester]        ──── writes test_report.json
+                 │
+                 ▼
+            [DevOps]        ──── writes devops_done.json
+                 │
+                 ▼
+              [QA]          ──── writes qa_report.json
+                 │
+                 ▼
+        [Final Summary → User]
+```
+
+---
+
+## Agent Gate Conditions
+
+Each agent has a gate — a condition that must be true before it can run.
+The Orchestrator checks each gate before spawning an agent.
+
+```yaml
+gates:
+  executor:
+    requires:
+      - file: .claude/context/manifest.json
+        field: app_name
+        must_exist: true
+    on_fail: halt_pipeline
+
+  architect:
+    requires:
+      - file: .claude/context/execution_plan.json
+        must_exist: true
+    on_fail: escalate_to_error_solver
+
+  backend:
+    requires:
+      - file: .claude/context/architecture.json
+        must_exist: true
+      - field: architecture.stack.backend
+        must_not_equal: "none"
+    on_fail: skip_with_log
+
+  frontend:
+    requires:
+      - file: .claude/context/architecture.json
+        must_exist: true
+      - field: execution_plan.agents_to_run
+        must_contain: "frontend"
+    on_fail: skip_with_log
+
+  tester:
+    requires:
+      - file: .claude/context/backend_done.json
+        must_exist: true
+      - field: execution_plan.prompt_complexity
+        must_not_equal: null
+    on_fail: skip_with_log
+
+  devops:
+    requires:
+      - file: .claude/context/test_report.json
+        must_exist: true
+    fallback:
+      - file: .claude/context/backend_done.json
+        must_exist: true
+        reason: tester_was_skipped
+    on_fail: escalate_to_error_solver
+
+  qa:
+    requires:
+      - file: .claude/context/devops_done.json
+        must_exist: true
+    on_fail: run_anyway
+    note: QA always runs — even if devops partially failed
+```
+
+---
+
+## Parallel Execution Rules
+
+Backend and Frontend agents CAN run in parallel when:
+- `execution_plan.prompt_complexity` is `medium` or `high`
+- Both agents appear in `execution_plan.agents_to_run`
+- The orchestrator supports parallel spawning
+
+When running in parallel:
+- Both agents read from `architecture.json` independently
+- Neither agent reads the other's output during generation
+- Tester waits for BOTH `backend_done.json` AND `frontend_done.json`
+  before starting
+
+When NOT running in parallel (low complexity or sequential mode):
+- Backend runs first
+- Frontend runs after `backend_done.json` is confirmed written
+- Frontend reads `backend_done.endpoints_implemented` before calling any API
+
+---
+
+## Skip Rules
+
+An agent is skipped when:
+1. `execution_plan.agents_skipped` contains the agent name, OR
+2. Its gate condition is not met AND `on_fail` is `skip_with_log`
+
+When an agent is skipped:
+- Write an entry to `.claude/context/skip_log.json`
+- Print to user:
+  ```
+  ⚠️  AGENT SKIPPED
+  Agent:   <agent_name>
+  Reason:  <reason>
+  Impact:  <what will be missing>
+  Status:  Pipeline continuing...
+  ```
+- The next agent in sequence uses the fallback gate if one exists
+
+---
+
+## Error Routing
+
+If any agent writes an error to `.claude/context/error_log.json`:
+
+```yaml
+error_routing:
+  - severity: CRITICAL
+    action: spawn_error_solver_immediately
+    then: halt_pipeline_until_resolved
+
+  - severity: WARNING
+    action: spawn_error_solver_in_background
+    then: continue_pipeline
+
+  - severity: INFO
+    action: log_only
+    then: continue_pipeline
+```
+
+Error Solver is spawned automatically by the Orchestrator — no agent
+needs to call it directly. It runs as a side process.
+
+---
+
+## Retry Policy
+
+```yaml
+retry_policy:
+  max_retries: 2
+  wait_between_retries_seconds: 30
+  retry_applies_to:
+    - architect
+    - backend
+    - frontend
+    - tester
+    - devops
+  no_retry_for:
+    - executor      # if executor fails, use default full pipeline
+    - qa            # qa always runs once — no retry needed
+    - error_solver  # error solver has its own internal retry logic
+```
+
+---
+
+## Context File Registry
+
+All agents communicate through these files in `.claude/context/`.
+No agent may read a file not listed here as its input.
+
+```yaml
+context_files:
+  manifest.json:
+    written_by: orchestrator
+    read_by: [executor, architect, backend, frontend, tester, devops, qa]
+
+  execution_plan.json:
+    written_by: executor
+    read_by: [architect, backend, frontend, tester, devops, qa]
+
+  architecture.json:
+    written_by: architect
+    read_by: [backend, frontend, tester, devops, qa]
+
+  backend_done.json:
+    written_by: backend
+    read_by: [frontend, tester, devops, qa]
+
+  frontend_done.json:
+    written_by: frontend
+    read_by: [tester, devops, qa]
+
+  test_report.json:
+    written_by: tester
+    read_by: [devops, qa]
+
+  devops_done.json:
+    written_by: devops
+    read_by: [qa]
+
+  qa_report.json:
+    written_by: qa
+    read_by: [orchestrator]
+
+  error_log.json:
+    written_by: [any_agent, error_solver]
+    read_by: [error_solver, orchestrator]
+
+  error_memory.json:
+    written_by: error_solver
+    read_by: [error_solver]
+
+  skip_log.json:
+    written_by: [orchestrator, error_solver]
+    read_by: [qa]
+```
+
+---
+
+## Final State Conditions
+
+The pipeline is complete when ONE of these states is reached:
+
+```yaml
+final_states:
+  success:
+    condition: qa_report.json exists AND qa_report.final_status == "success"
+    action: print_build_summary
+
+  success_with_warnings:
+    condition: qa_report.json exists AND qa_report.final_status == "success_with_warnings"
+    action: print_build_summary_with_warnings
+
+  partial:
+    condition: qa_report.json exists AND qa_report.final_status == "partial"
+    action: print_partial_summary_with_skip_log
+
+  halted:
+    condition: error_log.json has escalated entry AND pipeline_halted == true
+    action: print_escalation_report
+```

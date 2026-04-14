@@ -1,0 +1,10 @@
+{
+  "name": "filesystem",
+  "description": "Read and write files on the local filesystem. Used by all agents to persist context, write generated code, and read skill files.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+  "env": {},
+  "required": true,
+  "fallback": null
+}

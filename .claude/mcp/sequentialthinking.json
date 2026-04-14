@@ -1,0 +1,10 @@
+{
+  "name": "sequentialthinking",
+  "description": "Structured sequential reasoning tool. Forces agents to break complex decisions into explicit steps before executing. Used by Executor, Architect, and Reconciler agents for high-stakes planning.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+  "env": {},
+  "required": false,
+  "fallback": "Agents proceed with inline reasoning if this tool is unavailable."
+}

@@ -1,0 +1,12 @@
+{
+  "name": "github",
+  "description": "Create repositories, commit files, and push code to GitHub. Used by the DevOps agent. Requires GITHUB_TOKEN env var.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-github"],
+  "env": {
+    "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+  },
+  "required": false,
+  "fallback": "DevOps agent will generate git commands as shell scripts in /output/setup.sh for manual execution if GITHUB_TOKEN is not set."
+}
